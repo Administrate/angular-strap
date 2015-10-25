@@ -1,6 +1,6 @@
 /**
  * angular-strap
- * @version v2.3.3 - 2015-09-24
+ * @version v2.3.3 - 2015-10-25
  * @link http://mgcrea.github.io/angular-strap
  * @author Olivier Louvignes <olivier@mg-crea.com> (https://github.com/mgcrea)
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -182,10 +182,7 @@
               return;
             }
             if (values.length > limit) values = values.slice(0, limit);
-            var isVisible = typeahead.$isVisible();
-            isVisible && typeahead.update(values);
-            if (values.length === 1 && values[0].value === newValue) return;
-            !isVisible && typeahead.update(values);
+            typeahead.update(values);
             controller.$render();
           });
         });
@@ -373,13 +370,13 @@
             if (tipElement) tipElement.css({
               visibility: 'visible'
             });
-          });
-          if (options.keyboard) {
-            if (options.trigger !== 'focus') {
-              $tooltip.focus();
+            if (options.keyboard) {
+              if (options.trigger !== 'focus') {
+                $tooltip.focus();
+              }
+              bindKeyboardEvents();
             }
-            bindKeyboardEvents();
-          }
+          });
           if (options.autoClose) {
             bindAutoCloseEvents();
           }
@@ -1469,18 +1466,20 @@
           scope.$emit(options.prefixEvent + '.select', value, index, $select);
         };
         $select.$updateActiveIndex = function() {
-          if (controller.$modelValue && scope.$matches.length) {
-            if (options.multiple && angular.isArray(controller.$modelValue)) {
+          if (options.multiple) {
+            if (angular.isArray(controller.$modelValue)) {
               scope.$activeIndex = controller.$modelValue.map(function(value) {
                 return $select.$getIndex(value);
               });
             } else {
-              scope.$activeIndex = $select.$getIndex(controller.$modelValue);
+              scope.$activeIndex = [];
             }
-          } else if (scope.$activeIndex >= scope.$matches.length) {
-            scope.$activeIndex = options.multiple ? [] : 0;
-          } else if (!controller.$modelValue && !options.multiple) {
-            scope.$activeIndex = -1;
+          } else {
+            if (angular.isDefined(controller.$modelValue) && scope.$matches.length) {
+              scope.$activeIndex = $select.$getIndex(controller.$modelValue);
+            } else {
+              scope.$activeIndex = -1;
+            }
           }
         };
         $select.$isVisible = function() {
@@ -1556,7 +1555,7 @@
         };
         var _hide = $select.hide;
         $select.hide = function() {
-          if (!options.multiple && !controller.$modelValue) {
+          if (!options.multiple && angular.isUndefined(controller.$modelValue)) {
             scope.$activeIndex = -1;
           }
           $select.$element.off(isTouch ? 'touchstart' : 'mousedown', $select.$onMouseDown);
@@ -2823,6 +2822,7 @@
         };
         var show = $dropdown.show;
         $dropdown.show = function() {
+          if (!scope.content) return;
           show();
           $timeout(function() {
             options.keyboard && $dropdown.$element && $dropdown.$element.on('keydown', $dropdown.$onKeyDown);
@@ -2916,7 +2916,6 @@
       iconRight: 'glyphicon glyphicon-chevron-right'
     };
     this.$get = [ '$window', '$document', '$rootScope', '$sce', '$dateFormatter', 'datepickerViews', '$tooltip', '$timeout', function($window, $document, $rootScope, $sce, $dateFormatter, datepickerViews, $tooltip, $timeout) {
-      var bodyEl = angular.element($window.document.body);
       var isNative = /(ip(a|o)d|iphone|android)/gi.test($window.navigator.userAgent);
       var isTouch = 'createTouch' in $window.document && isNative;
       if (!defaults.lang) defaults.lang = $dateFormatter.getDefaultLocale();
@@ -3023,12 +3022,13 @@
           evt.stopPropagation();
           if (evt.keyCode === 13) {
             if (!scope.$mode) {
-              return $datepicker.hide(true);
+              $datepicker.hide(true);
             } else {
-              return scope.$apply(function() {
+              scope.$apply(function() {
                 $datepicker.setMode(scope.$mode - 1);
               });
             }
+            return;
           }
           $picker.onKeyDown(evt);
           parentScope.$digest();
@@ -3100,12 +3100,9 @@
         });
         var falseValueRegExp = /^(false|0|)$/i;
         angular.forEach([ 'html', 'container', 'autoclose', 'useNative' ], function(key) {
-          if (angular.isDefined(attr[key]) && falseValueRegExp.test(attr[key])) options[key] = false;
-        });
-        attr.bsShow && scope.$watch(attr.bsShow, function(newValue, oldValue) {
-          if (!datepicker || !angular.isDefined(newValue)) return;
-          if (angular.isString(newValue)) newValue = !!newValue.match(/true|,?(datepicker),?/i);
-          newValue === true ? datepicker.show() : datepicker.hide();
+          if (angular.isDefined(attr[key]) && falseValueRegExp.test(attr[key])) {
+            options[key] = false;
+          }
         });
         var datepicker = $datepicker(element, controller, options);
         options = datepicker.$options;
@@ -3119,12 +3116,20 @@
           lang: lang,
           strict: options.strictFormat
         });
+        attr.bsShow && scope.$watch(attr.bsShow, function(newValue, oldValue) {
+          if (!datepicker || !angular.isDefined(newValue)) return;
+          if (angular.isString(newValue)) newValue = !!newValue.match(/true|,?(datepicker),?/i);
+          newValue === true ? datepicker.show() : datepicker.hide();
+        });
         angular.forEach([ 'minDate', 'maxDate' ], function(key) {
           angular.isDefined(attr[key]) && attr.$observe(key, function(newValue) {
             datepicker.$options[key] = dateParser.getDateForAttribute(key, newValue);
             !isNaN(datepicker.$options[key]) && datepicker.$build(false);
             validateAgainstMinMaxDate(controller.$dateValue);
           });
+        });
+        angular.isDefined(attr.dateFormat) && attr.$observe('dateFormat', function(newValue) {
+          datepicker.$options.dateFormat = newValue;
         });
         scope.$watch(attr.ngModel, function(newValue, oldValue) {
           datepicker.update(controller.$dateValue);
